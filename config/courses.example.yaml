@@ -1,0 +1,14 @@
+# Copy to config/courses.yaml (git-ignored) and edit the paths.
+work_dir: work      # intermediate files: transcripts, parsed PDFs, alignment JSON
+output_dir: output  # final Markdown, one file per recording
+
+courses:
+  CS5223:
+    videos: ~/Downloads/CS5223 recordings     # folder of .mp4/.mkv/.m4a/...
+    slides: ~/courses/CS5223/LectureNotes     # folder of slide PDFs (used for alignment)
+    notes: ~/courses/CS5223/my-notes          # optional: extra PDFs, parsed but not aligned
+    language: en                              # Whisper language code; omit to auto-detect
+    # Optional manual override when automatic deck detection is wrong:
+    # lecture_map:
+    #   "Lecture (2026-08-28)": [lecture01, lecture02]
+    lecture_map: {}
