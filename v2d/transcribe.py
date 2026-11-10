@@ -6,6 +6,7 @@ is written. Videos that already have a transcript are skipped.
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -17,6 +18,15 @@ def fmt_ts(t: float) -> str:
     h, rem = divmod(int(t), 3600)
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def has_audio(path: Path) -> bool:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    return bool(out.stdout.strip())
 
 
 def run(c: dict, model: str = DEFAULT_MODEL, only: str | None = None) -> None:
@@ -31,20 +41,30 @@ def run(c: dict, model: str = DEFAULT_MODEL, only: str | None = None) -> None:
     if not videos:
         raise SystemExit(f"No media files found in {src}")
 
+    failed = []
     for v in videos:
         dst = out_dir / f"{v.stem}.json"
         if dst.exists():
             print(f"skip (done): {v.name}")
             continue
+        if not has_audio(v):
+            print(f"skip (no audio track): {v.name} - the download may have saved video only")
+            failed.append(v.name)
+            continue
         print(f"transcribing: {v.name}")
         t0 = time.time()
-        res = mlx_whisper.transcribe(
-            str(v),
-            path_or_hf_repo=model,
-            language=c.get("language"),
-            condition_on_previous_text=False,  # reduces repetition loops on long audio
-            verbose=False,
-        )
+        try:
+            res = mlx_whisper.transcribe(
+                str(v),
+                path_or_hf_repo=model,
+                language=c.get("language"),
+                condition_on_previous_text=False,  # reduces repetition loops on long audio
+                verbose=False,
+            )
+        except Exception as e:  # keep going with the other recordings
+            print(f"  failed: {str(e).splitlines()[0]}")
+            failed.append(v.name)
+            continue
         segs = [
             {"start": round(s["start"], 2), "end": round(s["end"], 2), "text": s["text"].strip()}
             for s in res["segments"]
@@ -54,3 +74,6 @@ def run(c: dict, model: str = DEFAULT_MODEL, only: str | None = None) -> None:
             "\n".join(f"[{fmt_ts(s['start'])}] {s['text']}" for s in segs)
         )
         print(f"  done: {len(segs)} segments in {time.time() - t0:.0f}s")
+
+    if failed:
+        print(f"{len(failed)} file(s) not transcribed: {', '.join(failed)}")
